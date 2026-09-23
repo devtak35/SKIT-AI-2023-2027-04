@@ -1,0 +1,8 @@
+AGENTS.md
+WEEKLY_INTEGRATION.md
+weekly/
+__pycache__/
+*.pyc
+node_modules/
+.env
+.DS_Store
