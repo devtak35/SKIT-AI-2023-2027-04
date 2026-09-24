@@ -1,0 +1,135 @@
+{
+  "cases": [
+    {
+      "case_id": "conditional-launch-plan",
+      "description": "A release plan depends on a QA check; avoid presenting the tentative date as a final decision.",
+      "transcript_segments": [
+        {
+          "segment_id": "plan-seg-001",
+          "revision": 1,
+          "is_final": true,
+          "start_ms": 1200,
+          "end_ms": 4600,
+          "speaker_label": "SPEAKER_00",
+          "text": "We could release the dashboard on October 2 if QA passes Thursday."
+        },
+        {
+          "segment_id": "plan-seg-002",
+          "revision": 1,
+          "is_final": true,
+          "start_ms": 4800,
+          "end_ms": 7700,
+          "speaker_label": "SPEAKER_01",
+          "text": "I'll run QA on Thursday and report any blockers."
+        },
+        {
+          "segment_id": "plan-seg-003",
+          "revision": 1,
+          "is_final": true,
+          "start_ms": 8000,
+          "end_ms": 10800,
+          "speaker_label": "SPEAKER_00",
+          "text": "Right, the October 2 release is still conditional on QA being clear."
+        }
+      ],
+      "reference_summary": {
+        "text": "The dashboard may be released on October 2 if Thursday's QA check passes; a speaker will run QA and report blockers.",
+        "covered_segment_ids": ["plan-seg-001", "plan-seg-002", "plan-seg-003"]
+      },
+      "reference_extraction": {
+        "items": [
+          {
+            "id": "plan-item-001",
+            "type": "action_item",
+            "text": "Run QA on Thursday and report any blockers; the speaker's identity is unresolved.",
+            "confidence": 0.97,
+            "evidence_segment_ids": ["plan-seg-002"]
+          },
+          {
+            "id": "plan-item-002",
+            "type": "topic",
+            "text": "The dashboard release is tentatively planned for October 2, conditional on QA passing.",
+            "confidence": 0.95,
+            "evidence_segment_ids": ["plan-seg-001", "plan-seg-003"]
+          }
+        ]
+      },
+      "must_not_claim": [
+        "The dashboard release on October 2 is confirmed.",
+        "SPEAKER_01 is a known person's identity."
+      ]
+    },
+    {
+      "case_id": "explicit-decision-and-owner",
+      "description": "An explicit scope decision and assigned task, alongside a suggestion that must not become a decision.",
+      "transcript_segments": [
+        {
+          "segment_id": "scope-seg-001",
+          "revision": 1,
+          "is_final": true,
+          "start_ms": 500,
+          "end_ms": 3300,
+          "speaker_label": "SPEAKER_02",
+          "text": "Decision: freeze the version 1 scope today; no new features."
+        },
+        {
+          "segment_id": "scope-seg-002",
+          "revision": 1,
+          "is_final": true,
+          "start_ms": 3600,
+          "end_ms": 6100,
+          "speaker_label": "SPEAKER_00",
+          "text": "Ravi will document the API changes by Monday."
+        },
+        {
+          "segment_id": "scope-seg-003",
+          "revision": 1,
+          "is_final": true,
+          "start_ms": 6400,
+          "end_ms": 8700,
+          "speaker_label": "SPEAKER_01",
+          "text": "We could consider adding export in a later version."
+        }
+      ],
+      "reference_summary": {
+        "text": "The team decided to freeze version 1 scope with no new features. Ravi will document the API changes by Monday; export was only suggested for a later version.",
+        "covered_segment_ids": ["scope-seg-001", "scope-seg-002", "scope-seg-003"]
+      },
+      "reference_extraction": {
+        "items": [
+          {
+            "id": "scope-item-001",
+            "type": "decision",
+            "text": "Freeze version 1 scope today; add no new features.",
+            "confidence": 0.99,
+            "evidence_segment_ids": ["scope-seg-001"]
+          },
+          {
+            "id": "scope-item-002",
+            "type": "person",
+            "text": "Ravi is named in the meeting as the owner of the API documentation task.",
+            "confidence": 0.96,
+            "evidence_segment_ids": ["scope-seg-002"]
+          },
+          {
+            "id": "scope-item-003",
+            "type": "action_item",
+            "text": "Ravi will document the API changes by Monday.",
+            "confidence": 0.98,
+            "evidence_segment_ids": ["scope-seg-002"]
+          },
+          {
+            "id": "scope-item-004",
+            "type": "topic",
+            "text": "Export was suggested as a possible feature for a later version; it was not decided for version 1.",
+            "confidence": 0.93,
+            "evidence_segment_ids": ["scope-seg-003"]
+          }
+        ]
+      },
+      "must_not_claim": [
+        "Export is included in version 1."
+      ]
+    }
+  ]
+}
