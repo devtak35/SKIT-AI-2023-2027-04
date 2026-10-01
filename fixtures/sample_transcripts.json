@@ -11,7 +11,8 @@
           "start_ms": 1200,
           "end_ms": 4600,
           "speaker_label": "SPEAKER_00",
-          "text": "We could release the dashboard on October 2 if QA passes Thursday."
+          "text": "We could release the dashboard on October 2 if QA passes Thursday.",
+          "asr_confidence": 0.92
         },
         {
           "segment_id": "plan-seg-002",
@@ -20,7 +21,8 @@
           "start_ms": 4800,
           "end_ms": 7700,
           "speaker_label": "SPEAKER_01",
-          "text": "I'll run QA on Thursday and report any blockers."
+          "text": "I'll run QA on Thursday and report any blockers.",
+          "asr_confidence": 0.89
         },
         {
           "segment_id": "plan-seg-003",
@@ -29,7 +31,8 @@
           "start_ms": 8000,
           "end_ms": 10800,
           "speaker_label": "SPEAKER_00",
-          "text": "Right, the October 2 release is still conditional on QA being clear."
+          "text": "Right, the October 2 release is still conditional on QA being clear.",
+          "asr_confidence": 0.95
         }
       ],
       "reference_summary": {
@@ -70,7 +73,8 @@
           "start_ms": 500,
           "end_ms": 3300,
           "speaker_label": "SPEAKER_02",
-          "text": "Decision: freeze the version 1 scope today; no new features."
+          "text": "Decision: freeze the version 1 scope today; no new features.",
+          "asr_confidence": 0.97
         },
         {
           "segment_id": "scope-seg-002",
@@ -79,7 +83,8 @@
           "start_ms": 3600,
           "end_ms": 6100,
           "speaker_label": "SPEAKER_00",
-          "text": "Ravi will document the API changes by Monday."
+          "text": "Ravi will document the API changes by Monday.",
+          "asr_confidence": 0.96
         },
         {
           "segment_id": "scope-seg-003",
@@ -88,7 +93,8 @@
           "start_ms": 6400,
           "end_ms": 8700,
           "speaker_label": "SPEAKER_01",
-          "text": "We could consider adding export in a later version."
+          "text": "We could consider adding export in a later version.",
+          "asr_confidence": 0.91
         }
       ],
       "reference_summary": {
