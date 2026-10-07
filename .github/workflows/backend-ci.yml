@@ -4,14 +4,12 @@ on:
   push:
     paths:
       - "backend/**"
-      - "weekly/dev/week_03_initial-database-schema.md"
-      - "weekly/dev/week_04_basic-backend-ci.md"
+      - "weekly/dev/**"
       - ".github/workflows/backend-ci.yml"
   pull_request:
     paths:
       - "backend/**"
-      - "weekly/dev/week_03_initial-database-schema.md"
-      - "weekly/dev/week_04_basic-backend-ci.md"
+      - "weekly/dev/**"
       - ".github/workflows/backend-ci.yml"
 
 jobs:

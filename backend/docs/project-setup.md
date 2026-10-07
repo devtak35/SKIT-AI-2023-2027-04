@@ -1,11 +1,15 @@
-# Week 01 (10-08-2026 - 16-08-2026)
+"""
+Week 01 (10-08-2026 - 16-08-2026)
 Task: Set up the project repository and dev environment
 
 Why this matters:
 Every later service and weekly integration needs a shared repository layout and predictable local setup. This baseline gives backend, frontend, and ML work clear homes while keeping local secrets, generated media, and build output out of Git.
 
-What this deliverable does:
+What this script does:
 Records the repository setup review, adds initial ignore rules, and defines the local development conventions for the backend and frontend. The backend and frontend instruction files specify the same Week 1 task and destination, so this one Dev artifact is the shared record for both.
+"""
+
+# Week 1 — repository and development-environment setup
 
 ## Repository setup review
 
