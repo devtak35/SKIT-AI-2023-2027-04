@@ -10,7 +10,7 @@ Result: PARTIAL — Week 1 documentation contracts align; runtime pipeline is fu
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 ARTIFACTS = {
     "Harsh / architecture": Path("weekly/harsh/week_01_architecture-review.md"),
     "Dhruv / audio capture": Path("weekly/dhruv/week_01_system-audio-research.md"),

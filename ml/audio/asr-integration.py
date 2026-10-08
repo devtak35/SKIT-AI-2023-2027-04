@@ -17,7 +17,7 @@ import tempfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from week6_asr import FixtureTranscriber
+from ml.audio.asr import FixtureTranscriber
 
 
 def run_smoke_test() -> int:

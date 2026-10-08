@@ -17,9 +17,9 @@ import tempfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from week6_asr import FixtureTranscriber
-from week7_diarization import FixtureDiarizer
-from week8_transcript_pipeline import AudioTranscriptPipeline
+from ml.audio.asr import FixtureTranscriber
+from ml.audio.diarization import FixtureDiarizer
+from ml.audio.transcript_pipeline import AudioTranscriptPipeline
 
 
 def run_smoke_test() -> int:

@@ -18,7 +18,7 @@ import tempfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from capture import float_samples_to_pcm16le, make_audio_chunks
+from ml.audio.capture import float_samples_to_pcm16le, make_audio_chunks
 
 
 def run_smoke_test() -> int:

@@ -19,12 +19,12 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-try:  # Support both ``python week8_transcript_pipeline.py`` and package imports.
-    from .week6_asr import FixtureTranscriber, TranscriptSegment, Transcriber
-    from .week7_diarization import DiarizationSegment, Diarizer, FixtureDiarizer
+try:  # Support package imports and direct execution from the repository root.
+    from .asr import FixtureTranscriber, TranscriptSegment, Transcriber
+    from .diarization import DiarizationSegment, Diarizer, FixtureDiarizer
 except ImportError:  # pragma: no cover - exercised by direct script execution
-    from week6_asr import FixtureTranscriber, TranscriptSegment, Transcriber
-    from week7_diarization import DiarizationSegment, Diarizer, FixtureDiarizer
+    from ml.audio.asr import FixtureTranscriber, TranscriptSegment, Transcriber
+    from ml.audio.diarization import DiarizationSegment, Diarizer, FixtureDiarizer
 
 
 @dataclass(frozen=True)

@@ -7,7 +7,7 @@ import math
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
-import final_prompt_templates as prompts
+from . import final_prompt_templates as prompts
 
 
 JsonGenerator = Callable[[list[dict[str, str]]], str | Mapping[str, Any]]

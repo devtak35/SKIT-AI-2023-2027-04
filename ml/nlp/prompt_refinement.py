@@ -9,8 +9,8 @@ from typing import Any
 
 
 NLP_DIR = Path(__file__).resolve().parent
-FIXTURE_PATH = NLP_DIR / "fixtures" / "week_03_sample_transcripts.json"
-PROMPTS_PATH = NLP_DIR / "week4_refined_prompt_templates.py"
+FIXTURE_PATH = NLP_DIR.parent.parent / "fixtures" / "sample_transcripts.json"
+PROMPTS_PATH = NLP_DIR / "refined_prompt_templates.py"
 
 
 def load_prompts() -> Any:

@@ -19,10 +19,23 @@ Gramothan, Jaipur.
 
 ## Structure
 - `backend/` — FastAPI backend
-- `frontend/` — React/Next.js frontend
+- `frontend/` — React/Vite frontend
 - `ml/audio/` — ASR + diarization pipeline
 - `ml/nlp/` — Summarization + extraction pipeline
-- `ml/rag/` — Knowledge graph + RAG query pipeline
+- `ml/rag/` — Evidence retrieval foundation; knowledge-graph integration is planned
 - `fixtures/` — Sample data for testing
 - `docs/architecture.md` — System architecture
 - `docs/PROGRESS.md` — Weekly progress log
+
+## Run the current offline checks
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r backend/requirements-dev.txt
+python -m pytest -q
+python integration/current_pipeline_check.py
+```
+
+Run the API with `uvicorn backend.app.main:app --reload` and the frontend with
+`cd frontend && npm install && npm run dev`.

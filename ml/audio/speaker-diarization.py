@@ -16,7 +16,7 @@ import tempfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from week7_diarization import FixtureDiarizer
+from ml.audio.diarization import FixtureDiarizer
 
 
 def run_smoke_test() -> int:
