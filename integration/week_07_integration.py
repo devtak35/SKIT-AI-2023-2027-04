@@ -3,7 +3,7 @@ Week 07 Integration Check
 
 Connects: Harsh's transcript-quality gap matrix, Dhruv's latest capture
 reliability checks, Garvit's latest prompt-contract checks, Dev's transcript
-upload endpoint, and representative quality scenarios.
+upload and retrieval endpoints, and representative quality scenarios.
 Still mocked: real ASR/diarization output and provider quality metrics.
 
 Result: PARTIAL — representative quality gaps are exercised through the
@@ -129,7 +129,7 @@ def check_garvit_handoff() -> list[dict]:
 
 
 def check_dev_upload_boundary(segments: list[dict]) -> None:
-    module = load_module("week_07_dev", "weekly/dev/week_06_transcript-upload-endpoint.py")
+    module = load_module("week_07_dev", "weekly/dev/week_07_transcript-retrieval-endpoint.py")
     event = {
         "schema_version": "1.0",
         "event_id": "evt-week7-quality-001",
@@ -145,8 +145,10 @@ def check_dev_upload_boundary(segments: list[dict]) -> None:
         rejected = client.post("/v1/transcript-segments", json=stale)
         if rejected.status_code != 409:
             raise AssertionError(f"stale revision was not rejected: {rejected.status_code} {rejected.text}")
-    print(f"[PASS] Dev boundary: accepted revision {event['payload']['revision']} and rejected stale revision 1")
-    print("[KNOWN LIMITATION] Dev Week 8 database migration is not present; upload store remains in-memory")
+        retrieved = client.get("/v1/sessions/session-week7-quality/transcript-segments")
+        if retrieved.status_code != 200 or retrieved.json()["segments"][0]["revision"] != 2:
+            raise AssertionError(f"retrieval did not return the current revision: {retrieved.status_code} {retrieved.text}")
+    print(f"[PASS] Dev endpoints: persisted and retrieved revision {event['payload']['revision']}; stale revision 1 rejected")
 
 
 def main() -> int:

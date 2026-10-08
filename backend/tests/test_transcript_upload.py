@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 
 from backend.app.main import app
-from backend.app.transcript_store import transcript_store
+from backend.app.transcript_repository import transcript_repository
 
 
 client = TestClient(app)
@@ -27,7 +27,7 @@ def make_event(*, event_id: str = "evt-001", revision: int = 1) -> dict[str, obj
 
 
 def setup_function() -> None:
-    transcript_store.clear()
+    transcript_repository.clear()
 
 
 def test_upload_accepts_a_valid_transcript_event() -> None:

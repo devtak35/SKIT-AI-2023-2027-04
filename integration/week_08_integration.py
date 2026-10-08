@@ -3,11 +3,11 @@ Week 08 Integration Check
 
 Connects: Harsh's diarization-aware data model, the Week 7 quality scenarios,
 Dev's revision-capable persistence schema, and Garvit's evidence contract.
-Still mocked: production migrations for speaker attributions, overlap indexes,
-and derived-record invalidation.
+Still mocked: production PostgreSQL deployment and a worker that performs
+derived-record invalidation after transcript correction.
 
-Result: PARTIAL — the revised in-memory provenance model and current revision
-storage are validated; the additional production tables are still pending.
+Result: PARTIAL — revision storage and provenance tables are validated;
+automatic invalidation and production PostgreSQL remain pending.
 """
 
 from __future__ import annotations
@@ -165,8 +165,11 @@ def check_dev_revision_storage(model: dict) -> None:
     ).fetchall()
     if [(row["revision"], row["is_final"]) for row in rows] != [(1, 0), (2, 1)]:
         raise AssertionError("Dev schema did not preserve both immutable transcript revisions")
+    tables = {row["name"] for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()}
+    if not {"speaker_attributions", "derived_records", "derived_record_evidence"}.issubset(tables):
+        raise AssertionError("Dev schema is missing diarization provenance tables")
     print("[PASS] Dev schema: both transcript revisions remain queryable for audit")
-    print("[KNOWN LIMITATION] Speaker-attribution and derived-record tables are not yet in Dev's schema")
+    print("[PASS] Dev schema: speaker-attribution and derived-record provenance tables are available")
 
 
 def main() -> int:
@@ -181,7 +184,7 @@ def main() -> int:
         print("Result: FAIL — one or more Week 8 integration checks failed")
         return 1
     print(f"[MOCK MODEL] {json.dumps(model, ensure_ascii=False)}")
-    print("Result: PARTIAL — diarization-aware provenance passes; production attribution migration remains pending")
+    print("Result: PARTIAL — diarization-aware provenance passes; production PostgreSQL and invalidation worker remain pending")
     return 0
 
 

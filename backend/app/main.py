@@ -8,7 +8,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, model_validator
 
-from backend.app.transcript_store import StaleTranscriptRevisionError, transcript_store
+from backend.app.transcript_store import StaleTranscriptRevisionError
+from backend.app.transcript_repository import SessionNotFoundError, transcript_repository
 
 
 class HealthResponse(BaseModel):
@@ -54,6 +55,15 @@ class TranscriptUploadResponse(BaseModel):
     session_id: str
     segment_id: str
     revision: int
+
+
+class TranscriptSegmentResponse(TranscriptSegmentPayload):
+    created_at: datetime
+
+
+class TranscriptRetrievalResponse(BaseModel):
+    session_id: str
+    segments: list[TranscriptSegmentResponse]
 
 
 app = FastAPI(
@@ -113,6 +123,14 @@ async def stale_transcript_revision(
     )
 
 
+@app.exception_handler(SessionNotFoundError)
+async def session_not_found(_request: object, _exc: SessionNotFoundError) -> JSONResponse:
+    """Return the project error envelope for an unknown transcript session."""
+    return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content={
+        "error": {"code": "SESSION_NOT_FOUND", "message": "No transcript session matches this ID.", "fields": [], "retryable": False}
+    })
+
+
 @app.post(
     "/v1/transcript-segments",
     response_model=TranscriptUploadResponse,
@@ -122,14 +140,21 @@ async def stale_transcript_revision(
 def upload_transcript_segment(event: TranscriptUploadRequest) -> TranscriptUploadResponse:
     """Validate and accept one revision-aware ASR transcript segment.
 
-    Persistence is deliberately in memory in Week 6. Week 8 replaces this
-    boundary's storage implementation with the Week 3 database schema.
+    The Week 8 repository persists the event, immutable revision, and raw
+    speaker attribution atomically using the Week 3 schema.
     """
-    accepted, is_new = transcript_store.accept(
+    accepted, is_new = transcript_repository.accept(
         event_id=event.event_id,
         session_id=event.session_id,
+        created_at=event.created_at.isoformat(),
         segment_id=event.payload.segment_id,
         revision=event.payload.revision,
+        is_final=event.payload.is_final,
+        start_ms=event.payload.start_ms,
+        end_ms=event.payload.end_ms,
+        speaker_id=event.payload.speaker_id,
+        text=event.payload.text,
+        asr_confidence=event.payload.asr_confidence,
     )
     return TranscriptUploadResponse(
         status="accepted" if is_new else "duplicate",
@@ -137,4 +162,14 @@ def upload_transcript_segment(event: TranscriptUploadRequest) -> TranscriptUploa
         session_id=accepted.session_id,
         segment_id=accepted.segment_id,
         revision=accepted.revision,
+    )
+
+
+@app.get("/v1/sessions/{session_id}/transcript-segments", response_model=TranscriptRetrievalResponse, tags=["transcripts"])
+def retrieve_transcript_segments(session_id: str, include_revisions: bool = False) -> TranscriptRetrievalResponse:
+    """Retrieve ordered transcript segments; default to the latest revision."""
+    records = transcript_repository.list_segments(session_id, include_revisions=include_revisions)
+    return TranscriptRetrievalResponse(
+        session_id=session_id,
+        segments=[TranscriptSegmentResponse(**record.__dict__) for record in records],
     )

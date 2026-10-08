@@ -31,6 +31,27 @@ CREATE TABLE IF NOT EXISTS transcript_segments (
 CREATE INDEX IF NOT EXISTS idx_transcript_segments_session_time
     ON transcript_segments(session_id, start_ms, end_ms);
 
+-- A diarization label is evidence, not a permanent identity. Keeping it
+-- separate lets a later identity-resolution pass correct attribution without
+-- rewriting an immutable transcript revision.
+CREATE TABLE IF NOT EXISTS speaker_attributions (
+    attribution_id TEXT PRIMARY KEY,
+    segment_id TEXT NOT NULL,
+    segment_revision INTEGER NOT NULL,
+    speaker_label TEXT NOT NULL,
+    speaker_confidence REAL CHECK (speaker_confidence IS NULL OR (speaker_confidence >= 0 AND speaker_confidence <= 1)),
+    resolved_person_id TEXT,
+    resolution_status TEXT NOT NULL DEFAULT 'unresolved'
+        CHECK (resolution_status IN ('unresolved', 'resolved', 'rejected')),
+    overlaps_attribution_ids TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (segment_id, segment_revision)
+        REFERENCES transcript_segments(segment_id, revision) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_speaker_attributions_segment_revision
+    ON speaker_attributions(segment_id, segment_revision);
+
 CREATE TABLE IF NOT EXISTS summaries (
     summary_id TEXT NOT NULL,
     session_id TEXT NOT NULL,
@@ -60,6 +81,30 @@ CREATE TABLE IF NOT EXISTS extracted_items (
 
 CREATE INDEX IF NOT EXISTS idx_extracted_items_session_type
     ON extracted_items(session_id, item_type);
+
+-- Provenance for records that must be reviewed after a source correction.
+CREATE TABLE IF NOT EXISTS derived_records (
+    record_id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    record_type TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'current'
+        CHECK (status IN ('current', 'needs_review', 'superseded')),
+    confidence REAL CHECK (confidence IS NULL OR (confidence >= 0 AND confidence <= 1)),
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (session_id) REFERENCES sessions(session_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS derived_record_evidence (
+    record_id TEXT NOT NULL,
+    segment_id TEXT NOT NULL,
+    segment_revision INTEGER NOT NULL,
+    start_ms INTEGER NOT NULL CHECK (start_ms >= 0),
+    end_ms INTEGER NOT NULL CHECK (end_ms >= start_ms),
+    PRIMARY KEY (record_id, segment_id, segment_revision),
+    FOREIGN KEY (record_id) REFERENCES derived_records(record_id) ON DELETE CASCADE,
+    FOREIGN KEY (segment_id, segment_revision)
+        REFERENCES transcript_segments(segment_id, revision) ON DELETE RESTRICT
+);
 
 CREATE TABLE IF NOT EXISTS domain_events (
     event_id TEXT PRIMARY KEY,

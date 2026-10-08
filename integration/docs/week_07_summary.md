@@ -15,6 +15,7 @@ Known limitations:
 
 - No real Dhruv Week 7 transcript-quality fixture or WER/DER measurements are
   available in this checkout.
-- Dev's upload store is still in memory; production quality metadata and gap
-  tracking are not persisted yet.
+- Quality metrics from a real ASR/diarization run are not yet available. The
+  transcript upload and retrieval endpoints now share a revision-aware SQLite
+  fixture database; production PostgreSQL follows in Week 11.
 

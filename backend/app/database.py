@@ -17,7 +17,10 @@ def initialize_schema(connection: sqlite3.Connection) -> None:
 
 def open_fixture_database() -> sqlite3.Connection:
     """Return an in-memory database suitable for deterministic local tests."""
-    connection = sqlite3.connect(":memory:")
+    # FastAPI executes synchronous route handlers in a worker thread.  This
+    # fixture connection is guarded by the repository lock, so it can safely
+    # be shared by those handlers during local tests.
+    connection = sqlite3.connect(":memory:", check_same_thread=False)
     connection.row_factory = sqlite3.Row
     initialize_schema(connection)
     return connection
