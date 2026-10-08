@@ -1,9 +1,3 @@
-"""Regression checks for the Week 4 refined NLP prompt templates.
-
-The repository has no configured LLM provider, so these checks cover the
-documented input/output contracts and known transcript edge cases. They do not
-measure generated summary quality.
-"""
 
 from __future__ import annotations
 
@@ -16,7 +10,7 @@ from typing import Any
 
 NLP_DIR = Path(__file__).resolve().parent
 FIXTURE_PATH = NLP_DIR / "fixtures" / "week_03_sample_transcripts.json"
-PROMPTS_PATH = NLP_DIR / "prompts(1).py"
+PROMPTS_PATH = NLP_DIR / "week4_refined_prompt_templates.py"
 
 
 def load_prompts() -> Any:
