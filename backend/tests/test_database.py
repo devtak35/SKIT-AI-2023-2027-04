@@ -1,4 +1,4 @@
-from backend.app.database import open_fixture_database
+from backend.app.database import open_database, open_fixture_database
 
 
 def test_initial_schema_supports_session_and_transcript_revision() -> None:
@@ -75,3 +75,23 @@ def test_schema_rejects_unknown_extraction_type() -> None:
         assert "CHECK constraint failed" in str(error)
     else:
         raise AssertionError("schema accepted an unsupported extraction type")
+
+
+def test_file_database_preserves_data_after_reopening(tmp_path) -> None:
+    database_path = tmp_path / "app.db"
+    connection = open_database(database_path)
+    connection.execute(
+        "INSERT INTO sessions(session_id, created_at, updated_at) VALUES (?, ?, ?)",
+        ("persistent-session", "2026-08-24T09:00:00Z", "2026-08-24T09:00:00Z"),
+    )
+    connection.commit()
+    connection.close()
+
+    reopened = open_database(database_path)
+    row = reopened.execute(
+        "SELECT session_id FROM sessions WHERE session_id = ?",
+        ("persistent-session",),
+    ).fetchone()
+
+    assert row["session_id"] == "persistent-session"
+    reopened.close()

@@ -7,7 +7,7 @@ import sqlite3
 from dataclasses import dataclass
 from threading import Lock
 
-from backend.app.database import open_fixture_database
+from backend.app.database import open_database
 from backend.app.transcript_store import StaleTranscriptRevisionError, StoredTranscriptEvent
 
 
@@ -32,7 +32,7 @@ class TranscriptRepository:
     """Portable persistence boundary for transcript API contracts."""
 
     def __init__(self, connection: sqlite3.Connection | None = None) -> None:
-        self._connection = connection or open_fixture_database()
+        self._connection = connection or open_database()
         self._lock = Lock()
 
     def accept(self, *, event_id: str, session_id: str, created_at: str,
