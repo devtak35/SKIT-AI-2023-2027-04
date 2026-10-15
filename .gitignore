@@ -9,3 +9,4 @@ node_modules/
 .DS_Store
 asr-fixture.wav
 diarization-fixture.wav
+.venv/
