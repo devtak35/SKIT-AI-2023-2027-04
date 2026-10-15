@@ -4,7 +4,6 @@ from datetime import datetime
 from typing import Literal
 
 from fastapi import FastAPI, status
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, model_validator
@@ -71,14 +70,6 @@ app = FastAPI(
     title="AI Realtime Video Summary Generator API",
     description="Backend entry point for the meeting summarization pipeline.",
     version="0.1.0",
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
-    allow_credentials=False,
-    allow_methods=["GET", "POST"],
-    allow_headers=["*"],
 )
 
 

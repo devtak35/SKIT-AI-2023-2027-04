@@ -23,3 +23,10 @@ On Windows PowerShell, activate the environment with
 The exact FastAPI version is pinned in `requirements.txt`; update it deliberately
 after checking the [official release notes](https://fastapi.tiangolo.com/release-notes/)
 and running the project's checks.
+
+## PostgreSQL structured storage
+
+Set `DATABASE_URL` to a PostgreSQL connection URL in deployment environments.
+`backend.app.database.open_configured_database()` will apply the idempotent
+`schema_postgres.sql` bootstrap. Local tests intentionally continue to use the
+in-memory SQLite fixture, so they do not require a running PostgreSQL server.
