@@ -1,1 +1,1 @@
-"""Audio capture, ASR, diarization, and transcript alignment."""
+"""Audio capture and processing package."""
