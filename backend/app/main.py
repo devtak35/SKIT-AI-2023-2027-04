@@ -1,22 +1,33 @@
 """FastAPI application entry point for the meeting summarization pipeline."""
 
 from datetime import datetime
+import mimetypes
+import os
+from pathlib import Path
+import socket
+import tempfile
 from typing import Literal
+from urllib.error import HTTPError, URLError
+from uuid import uuid4
 
-from fastapi import FastAPI, Query, status
+from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from backend.app.transcript_store import StaleTranscriptRevisionError
 from backend.app.transcript_repository import (
+    SessionAlreadyExistsError,
     SessionNotFoundError,
     SummaryValidationError,
     transcript_repository,
 )
 from backend.app.graph_repository import GraphRepository, GraphValidationError
+from backend.app.intelligence import refresh_session_intelligence
+from backend.app.llm import ProviderNotConfiguredError, ProviderRequestError
 from backend.app.rag import GroundedRAG
+from ml.audio.asr import DeepgramTranscriber
 
 
 class HealthResponse(BaseModel):
@@ -80,6 +91,29 @@ class SessionResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     segment_count: int
+
+
+class SessionCreateRequest(BaseModel):
+    session_id: str = Field(min_length=1, max_length=120, pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
+    title: str = Field(min_length=1, max_length=200)
+
+    @model_validator(mode="after")
+    def normalize_title(self) -> "SessionCreateRequest":
+        self.title = self.title.strip()
+        if not self.title:
+            raise ValueError("title must not be blank")
+        return self
+
+
+class SessionUpdateRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+
+    @model_validator(mode="after")
+    def normalize_title(self) -> "SessionUpdateRequest":
+        self.title = self.title.strip()
+        if not self.title:
+            raise ValueError("title must not be blank")
+        return self
 
 
 class SummaryWriteRequest(BaseModel):
@@ -200,7 +234,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
     allow_credentials=False,
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE"],
     allow_headers=["Content-Type"],
 )
 
@@ -263,10 +297,31 @@ async def session_not_found(_request: object, _exc: SessionNotFoundError) -> JSO
     })
 
 
+@app.exception_handler(SessionAlreadyExistsError)
+async def session_already_exists(_request: object, _exc: SessionAlreadyExistsError) -> JSONResponse:
+    return JSONResponse(status_code=status.HTTP_409_CONFLICT, content={
+        "error": {"code": "SESSION_ALREADY_EXISTS", "message": "A meeting already uses this session ID.", "fields": [], "retryable": False}
+    })
+
+
 @app.exception_handler(SummaryValidationError)
 async def summary_validation_error(_request: object, exc: SummaryValidationError) -> JSONResponse:
     return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content={
         "error": {"code": "SUMMARY_VALIDATION_ERROR", "message": str(exc), "fields": [], "retryable": False}
+    })
+
+
+@app.exception_handler(ProviderNotConfiguredError)
+async def provider_not_configured(_request: object, exc: ProviderNotConfiguredError) -> JSONResponse:
+    return JSONResponse(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, content={
+        "error": {"code": "PROVIDER_NOT_CONFIGURED", "message": str(exc), "fields": [], "retryable": False}
+    })
+
+
+@app.exception_handler(ProviderRequestError)
+async def provider_request_failed(_request: object, exc: ProviderRequestError) -> JSONResponse:
+    return JSONResponse(status_code=status.HTTP_502_BAD_GATEWAY, content={
+        "error": {"code": "PROVIDER_REQUEST_FAILED", "message": str(exc), "fields": [], "retryable": True}
     })
 
 
@@ -320,6 +375,144 @@ def list_sessions() -> list[SessionResponse]:
     return [SessionResponse(**record) for record in transcript_repository.list_sessions()]
 
 
+@app.post("/v1/sessions", response_model=SessionResponse, status_code=status.HTTP_201_CREATED, tags=["sessions"])
+def create_session(request: SessionCreateRequest) -> SessionResponse:
+    """Create a named meeting before recording or transcript delivery begins."""
+    record = transcript_repository.create_session(
+        session_id=request.session_id,
+        title=request.title,
+        created_at=datetime.now().astimezone().isoformat(),
+    )
+    return SessionResponse(**record)
+
+
+@app.patch("/v1/sessions/{session_id}", response_model=SessionResponse, tags=["sessions"])
+def update_session(session_id: str, request: SessionUpdateRequest) -> SessionResponse:
+    """Rename a persisted meeting without changing its evidence."""
+    return SessionResponse(**transcript_repository.update_session_title(session_id, request.title))
+
+
+@app.delete("/v1/sessions/{session_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["sessions"])
+def delete_session(session_id: str) -> None:
+    """Remove a meeting and all evidence and derived records owned by it."""
+    transcript_repository.delete_session(session_id)
+
+
+def _audio_provider_error(exc: Exception) -> str:
+    """Translate provider failures to useful messages without exposing payloads."""
+    if isinstance(exc, HTTPError):
+        if exc.code == 401:
+            return "Deepgram rejected the configured API key. Check that it is valid and has speech-to-text access."
+        if exc.code == 402:
+            return "Deepgram account billing is inactive or out of credits. Check the Deepgram project."
+        if exc.code == 403:
+            return "The configured Deepgram key does not have permission to transcribe recordings."
+        if exc.code in (400, 415):
+            return "Deepgram rejected this recording or its encoding. Try a supported audio or video format."
+        if exc.code == 429:
+            return "Deepgram rate limit reached. Wait a moment and try again."
+        return f"Deepgram returned HTTP {exc.code}. Check the Deepgram service and project configuration."
+    if isinstance(exc, URLError):
+        reason = exc.reason
+        if isinstance(reason, (TimeoutError, socket.timeout)) or "timed out" in str(reason).lower():
+            return "Deepgram timed out while uploading or transcribing this recording. Try a shorter recording or retry."
+        if isinstance(reason, socket.gaierror):
+            return "The API server could not resolve Deepgram's address. Check its DNS and network connection."
+        return "Could not connect to Deepgram. Check the API server's network connection and try again."
+    return "Deepgram returned an unreadable or unexpected response. Check the API logs and try again."
+
+
+@app.post("/v1/sessions/{session_id}/audio", status_code=status.HTTP_201_CREATED, tags=["audio"])
+async def transcribe_session_audio(
+    session_id: str,
+    file: UploadFile = File(...),
+    title: str = Form(default=""),
+) -> dict[str, object]:
+    """Transcribe audio or the audio track of an uploaded meeting video.
+
+    Media bytes are buffered only for this request and removed after
+    transcription. Provider or configuration failures never fall back to
+    fixture transcripts.
+    """
+    normalized_title = title.strip() or session_id
+    try:
+        SessionCreateRequest(session_id=session_id, title=normalized_title)
+    except ValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="The session ID or meeting title is invalid.") from exc
+
+    api_key = os.getenv("DEEPGRAM_API_KEY", "").strip()
+    if not api_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="DEEPGRAM_API_KEY is not configured. Set it in the root .env file and restart the API.",
+        )
+
+    content_type = (file.content_type or "").split(";", 1)[0].strip().lower()
+    if content_type in ("", "application/octet-stream"):
+        content_type = mimetypes.guess_type(file.filename or "")[0] or content_type
+    if not (content_type.startswith("audio/") or content_type.startswith("video/")):
+        raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="Upload an audio or video recording in a supported format.")
+
+    max_upload_bytes = int(os.getenv("MAX_MEDIA_UPLOAD_BYTES", os.getenv("MAX_AUDIO_UPLOAD_BYTES", str(100 * 1024 * 1024))))
+    media_bytes = await file.read(max_upload_bytes + 1)
+    await file.close()
+    if len(media_bytes) > max_upload_bytes:
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail=f"Recording uploads are limited to {max_upload_bytes} bytes.")
+    if not media_bytes:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="The uploaded recording is empty.")
+
+    temporary_path: str | None = None
+    try:
+        with tempfile.NamedTemporaryFile(prefix="skit-recording-", suffix=".upload", delete=False) as media_file:
+            media_file.write(media_bytes)
+            temporary_path = media_file.name
+        segments = DeepgramTranscriber(api_key).transcribe(Path(temporary_path), content_type=content_type)
+    except Exception as exc:
+        # Do not expose provider response bodies or request headers, which may
+        # contain sensitive transcript/provider information.
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=_audio_provider_error(exc)) from exc
+    finally:
+        if temporary_path:
+            Path(temporary_path).unlink(missing_ok=True)
+
+    if not segments:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="The provider returned no transcript segments for this recording. Check that it contains audible speech.")
+
+    known_sessions = {record["session_id"] for record in transcript_repository.list_sessions()}
+    if session_id not in known_sessions:
+        transcript_repository.create_session(
+            session_id=session_id,
+            title=normalized_title,
+            created_at=datetime.now().astimezone().isoformat(),
+        )
+
+    upload_id = uuid4().hex
+    created_at = datetime.now().astimezone().isoformat()
+    stored_segments: list[str] = []
+    for segment in segments:
+        segment_id = f"audio-{upload_id}-{segment.segment_id}"
+        transcript_repository.accept(
+            event_id=f"{upload_id}:{segment.segment_id}",
+            session_id=session_id,
+            created_at=created_at,
+            segment_id=segment_id,
+            revision=1,
+            is_final=True,
+            start_ms=segment.start_ms,
+            end_ms=segment.end_ms,
+            speaker_id=segment.speaker_id,
+            text=segment.text,
+            asr_confidence=segment.confidence,
+        )
+        stored_segments.append(segment_id)
+    return {
+        "session_id": session_id,
+        "provider": "deepgram",
+        "segments_stored": len(stored_segments),
+        "segment_ids": stored_segments,
+    }
+
+
 @app.post("/v1/sessions/{session_id}/summaries", response_model=SummaryResponse, status_code=status.HTTP_201_CREATED, tags=["summaries"])
 def save_summary(session_id: str, summary: SummaryWriteRequest) -> SummaryResponse:
     """Store Garvit's evidence-linked running or final summary."""
@@ -335,6 +528,15 @@ def retrieve_latest_summary(session_id: str) -> SummaryResponse | None:
     """Return the most recently stored summary, if the producer has emitted one."""
     summary = transcript_repository.latest_summary(session_id)
     return SummaryResponse(**summary.__dict__) if summary else None
+
+
+@app.post("/v1/sessions/{session_id}/intelligence", tags=["intelligence"])
+def generate_session_intelligence(session_id: str) -> dict[str, object]:
+    """Generate an evidence-cited summary and graph records with configured Groq."""
+    try:
+        return refresh_session_intelligence(session_id, transcript_repository, graph_repository)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
 
 
 @app.get("/v1/semantic-search", tags=["embeddings"])

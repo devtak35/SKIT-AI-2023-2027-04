@@ -1,9 +1,11 @@
+import json
 from ml.audio.playback_sync import PlaybackSegment, segment_at
 from ml.audio.preprocess import normalize_pcm16le, prepare_pcm_for_asr, remove_dc_offset
 from ml.audio.quality import overlap_pairs, pcm16_quality
-from ml.audio.week6_asr import TranscriptSegment
-from ml.audio.week7_diarization import DiarizationSegment
-from ml.audio.week8_transcript_pipeline import align_segments
+from ml.audio.asr import TranscriptSegment
+from ml.audio.diarization import DiarizationSegment
+from ml.audio.transcript_pipeline import align_segments
+from ml.audio.asr import DeepgramTranscriber
 
 
 def test_alignment_preserves_crosstalk_and_nlp_contract():
@@ -65,3 +67,37 @@ def test_quality_report_exposes_review_flags():
     report = pcm16_quality(b"\xff\x7f" * 4, sample_rate_hz=1000).to_dict()
     assert "clipping" in report["quality_flags"]
     assert 0 <= report["quality_score"] <= 1
+
+
+def test_deepgram_adapter_requests_diarization_and_preserves_speakers(tmp_path, monkeypatch):
+    audio_path = tmp_path / "recording.webm"
+    audio_path.write_bytes(b"audio")
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def read(self):
+            return json.dumps({"results": {"utterances": [{
+                "start": 0.2, "end": 1.1, "transcript": "Ship the release.",
+                "confidence": 0.93, "speaker": 0,
+            }]}}).encode()
+
+    def fake_urlopen(request, timeout, context):
+        assert timeout == 600
+        assert context.verify_mode == 2
+        assert request.data == b"audio"
+        assert request.headers["Content-type"] == "audio/webm"
+        assert "diarize=true" in request.full_url
+        return Response()
+
+    monkeypatch.setattr("ml.audio.asr.urlopen", fake_urlopen)
+    segments = DeepgramTranscriber("test-key").transcribe(audio_path, content_type="audio/webm")
+
+    assert len(segments) == 1
+    assert segments[0].speaker_id == "SPEAKER_00"
+    assert segments[0].start_ms == 200
+    assert segments[0].end_ms == 1100

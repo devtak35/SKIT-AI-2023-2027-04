@@ -5,7 +5,9 @@ weekly/
 __pycache__/
 *.pyc
 backend/data/*.db
+backend/data/*.bak
 node_modules/
+frontend/dist/
 .env
 .DS_Store
 asr-fixture.wav

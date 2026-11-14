@@ -1,4 +1,4 @@
-from backend.app.database import open_database, open_fixture_database
+from backend.app.database import open_configured_database, open_database, open_fixture_database
 
 
 def test_initial_schema_supports_session_and_transcript_revision() -> None:
@@ -94,4 +94,25 @@ def test_file_database_preserves_data_after_reopening(tmp_path) -> None:
     ).fetchone()
 
     assert row["session_id"] == "persistent-session"
+    reopened.close()
+
+
+def test_configured_local_database_is_persistent_sqlite(tmp_path, monkeypatch) -> None:
+    database_path = tmp_path / "configured" / "app.db"
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setenv("DATABASE_PATH", str(database_path))
+
+    connection = open_configured_database()
+    connection.execute(
+        "INSERT INTO sessions(session_id, created_at, updated_at) VALUES (?, ?, ?)",
+        ("configured-session", "2026-11-13T10:00:00Z", "2026-11-13T10:00:00Z"),
+    )
+    connection.commit()
+    connection.close()
+
+    reopened = open_configured_database()
+    row = reopened.execute(
+        "SELECT session_id FROM sessions WHERE session_id = ?", ("configured-session",)
+    ).fetchone()
+    assert row["session_id"] == "configured-session"
     reopened.close()

@@ -20,11 +20,11 @@ from pathlib import Path
 from typing import Any
 
 try:  # Support both ``python week8_transcript_pipeline.py`` and package imports.
-    from .week6_asr import FixtureTranscriber, TranscriptSegment, Transcriber
-    from .week7_diarization import DiarizationSegment, Diarizer, FixtureDiarizer
+    from .asr import FixtureTranscriber, TranscriptSegment, Transcriber
+    from .diarization import DiarizationSegment, Diarizer, FixtureDiarizer
 except ImportError:  # pragma: no cover - exercised by direct script execution
-    from week6_asr import FixtureTranscriber, TranscriptSegment, Transcriber
-    from week7_diarization import DiarizationSegment, Diarizer, FixtureDiarizer
+    from asr import FixtureTranscriber, TranscriptSegment, Transcriber
+    from diarization import DiarizationSegment, Diarizer, FixtureDiarizer
 
 
 @dataclass(frozen=True)

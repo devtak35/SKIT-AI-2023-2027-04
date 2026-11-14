@@ -17,8 +17,12 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 import json
 from pathlib import Path
+import ssl
 from typing import Any, Protocol
+from urllib.parse import urlencode
 from urllib.request import Request, urlopen
+
+import certifi
 
 
 @dataclass(frozen=True)
@@ -30,6 +34,7 @@ class TranscriptSegment:
     end_ms: int
     text: str
     confidence: float | None = None
+    speaker_id: str = "UNKNOWN"
 
     def __post_init__(self) -> None:
         if self.start_ms < 0 or self.end_ms <= self.start_ms:
@@ -97,27 +102,40 @@ class DeepgramTranscriber:
             raise ValueError("api_key must not be empty")
         self.api_key, self.model, self.endpoint = api_key, model, endpoint
 
-    def transcribe(self, audio_path: Path) -> list[TranscriptSegment]:
+    def transcribe(self, audio_path: Path, *, content_type: str = "audio/wav") -> list[TranscriptSegment]:
         audio = Path(audio_path).read_bytes()
+        query = urlencode({"model": self.model, "utterances": "true", "diarize": "true", "punctuate": "true"})
         request = Request(
-            f"{self.endpoint}?model={self.model}&utterances=true&punctuate=true",
+            f"{self.endpoint}?{query}",
             data=audio,
-            headers={"Authorization": f"Token {self.api_key}", "Content-Type": "audio/wav"},
+            headers={"Authorization": f"Token {self.api_key}", "Content-Type": content_type},
             method="POST",
         )
-        with urlopen(request, timeout=60) as response:  # noqa: S310 - endpoint is configurable by caller
+        tls_context = ssl.create_default_context(cafile=certifi.where())
+        # Deepgram's prerecorded endpoint allows long-running transcription;
+        # videos can take much longer to upload and process than short audio.
+        with urlopen(request, timeout=600, context=tls_context) as response:  # noqa: S310 - endpoint is configurable by caller
             payload = json.loads(response.read().decode("utf-8"))
         alternatives = payload.get("results", {}).get("channels", [{}])[0].get("alternatives", [{}])
-        paragraphs = alternatives[0].get("paragraphs", {}).get("paragraphs", [])
+        # Deepgram utterances include diarization labels when diarize=true.
+        # Paragraphs are retained as a provider fallback, with identity left
+        # explicitly unknown if the provider did not return a speaker.
+        paragraphs = payload.get("results", {}).get("utterances", [])
         if not paragraphs:
-            paragraphs = payload.get("results", {}).get("utterances", [])
+            paragraphs = alternatives[0].get("paragraphs", {}).get("paragraphs", [])
         output = []
         for index, item in enumerate(paragraphs):
             start_ms = round(float(item.get("start", 0)) * 1000)
             end_ms = max(start_ms + 1, round(float(item.get("end", 0)) * 1000))
             text = item.get("transcript", item.get("text", "")).strip()
             if text:
-                output.append(TranscriptSegment(f"asr-{index:04d}", start_ms, end_ms, text, item.get("confidence")))
+                speaker_id = item.get("speaker")
+                if speaker_id is not None:
+                    speaker_id = f"SPEAKER_{int(speaker_id):02d}" if str(speaker_id).isdigit() else str(speaker_id)
+                output.append(TranscriptSegment(
+                    f"asr-{index:04d}", start_ms, end_ms, text,
+                    item.get("confidence"), speaker_id or "UNKNOWN",
+                ))
         return output
 
 

@@ -34,41 +34,49 @@ python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r backend/requirements-dev.txt
 python -m pytest -q
-python3 weekly/integration/week_13_integration.py
+python3 integration/current_pipeline_check.py
 ```
 
 Run the API with `uvicorn backend.app.main:app --reload` and the frontend with
 `cd frontend && npm install && npm run dev`.
 
-For a containerized local demo, run `docker compose up --build`. It exposes the
-frontend on `http://localhost:5173`, the API on `http://localhost:8000`, and
-PostgreSQL only within the compose network. The frontend API base URL is a
-build-time setting; set `VITE_API_BASE_URL` to the deployed API URL when
-building for a cloud environment.
+The offline demo uses SQLite and needs no database or API keys. Start the API
+and frontend in separate terminals. The frontend uses `VITE_API_URL` for a
+non-default API URL.
 
 ## Local PostgreSQL and provider setup
 
-Start the pgvector-backed database:
+For PostgreSQL deployment, set `DATABASE_URL` before starting the API. The
+local test and demo path remains SQLite when it is unset.
 
 ```bash
-docker compose up -d postgres
-cp .env.example .env
-set -a; source .env; set +a
-python3 scripts/runtime_check.py
-uvicorn backend.app.main:app --reload --env-file .env
+export DATABASE_URL='postgresql://user:password@localhost:5432/meeting_summary'
+uvicorn backend.app.main:app --reload
 ```
 
-The API uses PostgreSQL whenever `DATABASE_URL` is set and keeps the in-memory
-SQLite fixture for tests when it is absent. `scripts/runtime_check.py` prints
-configured provider names without exposing secrets and verifies the PostgreSQL
-schema when a database URL is present. The default provider values remain
-`fixture` until real ASR, diarization, LLM, and embedding keys are added to
-`.env`.
+The API uses PostgreSQL whenever `DATABASE_URL` is set. Otherwise it uses a
+persistent SQLite database at `backend/data/app.db`; set `DATABASE_PATH` to
+choose another local path. Automated tests use isolated in-memory SQLite
+connections explicitly. The default embedding path is deterministic and
+offline; live Groq generation and external ASR/diarization providers require
+their configured credentials and runtime dependencies.
+
+To transcribe an uploaded audio or video recording, set DEEPGRAM_API_KEY in
+the root .env and restart the API. The transcript intake page posts the media
+to the versioned session audio route. Deepgram returns timestamped utterances
+and speaker labels from the recording's audio track; video frames are not
+analyzed. The server removes its temporary media file after processing.
+Without the key the endpoint returns HTTP 503 and does not create a transcript.
+Upload size defaults to 100 MiB and can be changed with
+MAX_MEDIA_UPLOAD_BYTES (MAX_AUDIO_UPLOAD_BYTES remains supported as a legacy
+fallback).
 
 ## API integration seams
 
 - `POST /v1/transcript-segments` and `GET /v1/sessions/{id}/transcript-segments`
   store and retrieve revisioned ASR evidence.
+- `POST /v1/sessions/{id}/audio` accepts multipart audio, invokes configured
+  Deepgram transcription/diarization, and stores/indexes the returned evidence.
 - `POST /v1/sessions/{id}/summaries` stores a Garvit-produced summary only when
   it names existing source segments; `GET .../summaries/latest` drives the UI.
 - `POST /v1/graph/records`, `GET /v1/sessions/{id}/records`, and `POST

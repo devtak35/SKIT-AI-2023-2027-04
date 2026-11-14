@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from dataclasses import dataclass
+from datetime import datetime
 from threading import Lock
 
 from backend.app.database import open_configured_database, open_fixture_database
@@ -18,6 +19,10 @@ class SessionNotFoundError(Exception):
 
 class SummaryValidationError(ValueError):
     """Raised when a summary does not cite evidence in its session."""
+
+
+class SessionAlreadyExistsError(ValueError):
+    """Raised when a caller tries to create an existing session."""
 
 
 @dataclass(frozen=True)
@@ -171,6 +176,28 @@ class TranscriptRepository:
             rows = self._connection.execute("SELECT session_id FROM sessions ORDER BY created_at, session_id").fetchall()
             return [row["session_id"] for row in rows]
 
+    def create_session(self, *, session_id: str, title: str, created_at: str) -> dict[str, object]:
+        """Create an empty, named meeting before its first audio event arrives."""
+        with self._lock:
+            placeholder = "%s" if self._postgres else "?"
+            existing = self._connection.execute(
+                f"SELECT 1 FROM sessions WHERE session_id = {placeholder}", (session_id,)
+            ).fetchone()
+            if existing is not None:
+                raise SessionAlreadyExistsError(session_id)
+            self._connection.execute(
+                "INSERT INTO sessions(session_id, title, status, created_at, updated_at) VALUES (%s, %s, 'created', %s, %s)"
+                if self._postgres else
+                "INSERT INTO sessions(session_id, title, status, created_at, updated_at) VALUES (?, ?, 'created', ?, ?)",
+                (session_id, title, created_at, created_at),
+            )
+            if not self._postgres:
+                self._connection.commit()
+            return {
+                "session_id": session_id, "title": title, "status": "created",
+                "created_at": created_at, "updated_at": created_at, "segment_count": 0,
+            }
+
     def list_sessions(self) -> list[dict[str, object]]:
         """Return dashboard metadata without exposing storage internals."""
         with self._lock:
@@ -185,6 +212,91 @@ class TranscriptRepository:
                    FROM sessions ORDER BY updated_at DESC, session_id"""
             ).fetchall()
             return [dict(row) for row in rows]
+
+    def update_session_title(self, session_id: str, title: str) -> dict[str, object]:
+        """Rename a meeting and return its refreshed dashboard record."""
+        with self._lock:
+            placeholder = "%s" if self._postgres else "?"
+            exists = self._connection.execute(
+                f"SELECT 1 FROM sessions WHERE session_id = {placeholder}", (session_id,)
+            ).fetchone()
+            if exists is None:
+                raise SessionNotFoundError(session_id)
+            now = datetime.now().astimezone().isoformat()
+            self._connection.execute(
+                f"UPDATE sessions SET title = {placeholder}, updated_at = {placeholder} WHERE session_id = {placeholder}",
+                (title, now, session_id),
+            )
+            if not self._postgres:
+                self._connection.commit()
+            row = self._connection.execute(
+                f"""SELECT session_id, title, status, created_at, updated_at,
+                          (SELECT COUNT(*) FROM transcript_segments AS segment
+                           WHERE segment.session_id = sessions.session_id
+                             AND segment.revision = (SELECT MAX(candidate.revision)
+                               FROM transcript_segments AS candidate
+                               WHERE candidate.session_id = segment.session_id
+                                 AND candidate.segment_id = segment.segment_id)) AS segment_count
+                    FROM sessions WHERE session_id = {placeholder}""",
+                (session_id,),
+            ).fetchone()
+            return dict(row)
+
+    def delete_session(self, session_id: str) -> None:
+        """Delete a meeting and its session-owned evidence atomically."""
+        with self._lock:
+            placeholder = "%s" if self._postgres else "?"
+            exists = self._connection.execute(
+                f"SELECT 1 FROM sessions WHERE session_id = {placeholder}", (session_id,)
+            ).fetchone()
+            if exists is None:
+                raise SessionNotFoundError(session_id)
+            try:
+                self._connection.execute("BEGIN")
+                # These two evidence tables use RESTRICT rather than cascading
+                # FKs because revisions are normally immutable.
+                self._connection.execute(
+                    f"DELETE FROM derived_record_evidence WHERE session_id = {placeholder}", (session_id,)
+                )
+                self._connection.execute(
+                    f"DELETE FROM graph_evidence WHERE session_id = {placeholder}", (session_id,)
+                )
+                self._connection.execute(
+                    f"DELETE FROM graph_action_items WHERE session_id = {placeholder}", (session_id,)
+                )
+                # Graph entities can be shared across meetings. Remove only
+                # entities that have no evidence elsewhere, and detach them
+                # from records in remaining meetings first.
+                orphan_rows = self._connection.execute(
+                    """SELECT entity.entity_id FROM graph_entities AS entity
+                         WHERE NOT EXISTS (SELECT 1 FROM graph_evidence AS evidence
+                             WHERE evidence.record_type = 'entity' AND evidence.record_id = entity.entity_id)"""
+                ).fetchall()
+                orphan_ids = [row["entity_id"] for row in orphan_rows]
+                if orphan_ids:
+                    marks = ", ".join([placeholder] * len(orphan_ids))
+                    self._connection.execute(
+                        f"DELETE FROM graph_relationships WHERE source_entity_id IN ({marks}) OR target_entity_id IN ({marks})",
+                        (*orphan_ids, *orphan_ids),
+                    )
+                    self._connection.execute(
+                        f"UPDATE graph_action_items SET owner_entity_id = NULL, owner_status = 'unassigned' WHERE owner_entity_id IN ({marks})",
+                        tuple(orphan_ids),
+                    )
+                    self._connection.execute(
+                        f"UPDATE graph_action_items SET related_decision_id = NULL WHERE related_decision_id IN ({marks})",
+                        tuple(orphan_ids),
+                    )
+                    self._connection.execute(
+                        f"DELETE FROM graph_entities WHERE entity_id IN ({marks})", tuple(orphan_ids)
+                    )
+                self._connection.execute(
+                    f"DELETE FROM sessions WHERE session_id = {placeholder}", (session_id,)
+                )
+                self._connection.execute("COMMIT")
+            except Exception:
+                self._connection.rollback()
+                raise
 
     def save_summary(self, *, summary_id: str, session_id: str, version: int,
                      text: str, source_segment_ids: list[str], is_final: bool,
